@@ -2,6 +2,8 @@ import copy
 import datetime
 
 from django.db import models
+from django.contrib.auth.models import User
+from functools import wraps
 
 from history import manager
 
@@ -22,6 +24,21 @@ class HistoricalRecords(object):
 
         descriptor = manager.HistoryDescriptor(history_model)
         setattr(sender, self.manager_name, descriptor)
+        capture_save_method(self, sender)
+
+    def capture_save_method(self, sender):
+        """
+        Replace 'save()' by 'save(editor=user)'
+        """
+        original_save = sender.save
+
+        @wraps(original_save)
+        def new_save(self, *args, **kwargs):
+            # Save editor in temporary variable, post_save will read this one
+            self._history_editor = kwargs.pop('editor', None)
+            original_save(self, *args, **kwargs)
+
+        sender.save = new_save
 
     def create_history_model(self, model):
         """
@@ -48,7 +65,7 @@ class HistoricalRecords(object):
                 # The historical model gets its own AutoField, so any
                 # existing one must be replaced with an IntegerField.
                 field.__class__ = models.IntegerField
-            
+
             if field.primary_key or field.unique:
                 # Unique fields can no longer be guaranteed unique,
                 # but they should still be indexed for faster lookups.
@@ -65,6 +82,7 @@ class HistoricalRecords(object):
         record model, in addition to the ones returned by copy_fields below.
         """
         rel_nm = '_%s_history' % model._meta.object_name.lower()
+        rel_nm_user = '_%s_history_editor' % model._meta.object_name.lower()
         return {
             'history_id': models.AutoField(primary_key=True),
             'history_date': models.DateTimeField(default=datetime.datetime.now),
@@ -74,6 +92,7 @@ class HistoricalRecords(object):
                 ('-', 'Deleted'),
             )),
             'history_object': HistoricalObjectDescriptor(model),
+            'history_editor': models.ForeignKey(User, null=True, blank=True, related_name=rel_nm_user),
             '__unicode__': lambda self: u'%s as of %s' % (self.history_object,
                                                           self.history_date)
         }
@@ -89,17 +108,17 @@ class HistoricalRecords(object):
         }
 
     def post_save(self, instance, created, **kwargs):
-        self.create_historical_record(instance, created and '+' or '~')
+        self.create_historical_record(instance, instance._history_editor, created and '+' or '~')
 
     def post_delete(self, instance, **kwargs):
-        self.create_historical_record(instance, '-')
+        self.create_historical_record(instance, None, '-')
 
-    def create_historical_record(self, instance, type):
+    def create_historical_record(self, instance, editor, type):
         manager = getattr(instance, self.manager_name)
         attrs = {}
         for field in instance._meta.fields:
             attrs[field.attname] = getattr(instance, field.attname)
-        manager.create(history_type=type, **attrs)
+        manager.create(history_type=type, history_editor=editor, **attrs)
 
 class HistoricalObjectDescriptor(object):
     def __init__(self, model):
