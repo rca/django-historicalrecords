@@ -24,7 +24,8 @@ class HistoricalRecords(object):
 
         descriptor = manager.HistoryDescriptor(history_model)
         setattr(sender, self.manager_name, descriptor)
-        capture_save_method(self, sender)
+        self.capture_save_method(sender)
+        self.create_set_editor_method(sender)
 
     def capture_save_method(self, sender):
         """
@@ -35,10 +36,24 @@ class HistoricalRecords(object):
         @wraps(original_save)
         def new_save(self, *args, **kwargs):
             # Save editor in temporary variable, post_save will read this one
-            self._history_editor = kwargs.pop('editor', None)
+            self._history_editor = kwargs.pop('editor', getattr(self, '_history_editor', None))
             original_save(self, *args, **kwargs)
 
         sender.save = new_save
+
+    def create_set_editor_method(self, sender):
+        """
+        Add a set_editor method to the model which has a history.
+        """
+        if hasattr(sender, 'set_editor'):
+            raise Exception('historicalrecords cannot add method set_editor to %s' % sender.__class__.__name__)
+
+        def set_editor(self, editor):
+            """
+            Set the editor (User object) to be used in the historicalrecord during the next save() call.
+            """
+            self._history_editor = editor
+        sender.set_editor = set_editor
 
     def create_history_model(self, model):
         """
