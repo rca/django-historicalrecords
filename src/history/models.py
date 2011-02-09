@@ -8,6 +8,9 @@ from functools import wraps
 from history import manager
 
 class HistoricalRecords(object):
+    def __init__(self, module=None):
+        self._module = module
+
     def contribute_to_class(self, cls, name):
         self.manager_name = name
         models.signals.class_prepared.connect(self.finalize, sender=cls)
@@ -72,7 +75,7 @@ class HistoricalRecords(object):
         """
         # Though not strictly a field, this attribute
         # is required for a model to function properly.
-        fields = {'__module__': model.__module__}
+        fields = {'__module__': self._module or model.__module__}
 
         for field in model._meta.fields:
             field = copy.copy(field)
