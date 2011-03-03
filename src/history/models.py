@@ -7,6 +7,17 @@ from functools import wraps
 
 from history import manager
 
+
+class HistoryChange(object):
+    def __init__(self, name, from_value, to_value):
+        self.name = name
+        self.from_value = from_value
+        self.to_value = to_value
+
+    def __unicode__(self):
+        return 'Field %s changed from %s to %s' % (self.name, self.from_value, self.to_value)
+
+
 class HistoricalRecords(object):
     def __init__(self, module=None):
         self._module = module
@@ -62,21 +73,80 @@ class HistoricalRecords(object):
         """
         Creates a historical model to associate with the model provided.
         """
-        attrs = self.copy_fields(model)
-        attrs.update(self.get_extra_fields(model))
-        attrs.update(Meta=type('Meta', (), self.get_meta_options(model)))
-        name = 'Historical%s' % model._meta.object_name
-        return type(name, (models.Model,), attrs)
+        rel_nm = '_%s_history' % model._meta.object_name.lower()
+        rel_nm_user = '_%s_history_editor' % model._meta.object_name.lower()
+
+        class HistoryEntryMeta(type):
+            """
+            Meta class for history model. This will rename the history model,
+            and copy the necessary fields from the other model.
+            """
+            def __new__(c, name, bases, attrs):
+                # Rename class
+                name = 'Historical%s' % model._meta.object_name
+
+                # This attribute is required for a model to function properly.
+                attrs['__module__'] = self._module or model.__module__
+
+                # Copy attributes from base class
+                attrs.update(self.copy_fields(model))
+                attrs.update(Meta=type('Meta', (), self.get_meta_options(model)))
+
+                return type(name, bases, attrs)
+
+        class HistoryEntry(models.Model):
+            """
+            History entry
+            """
+            __metaclass__ = HistoryEntryMeta
+
+            history_id = models.AutoField(primary_key=True)
+            history_date = models.DateTimeField(default=datetime.datetime.now)
+            history_type = models.CharField(max_length=1, choices=(
+                    ('+', 'Created'),
+                    ('~', 'Changed'),
+                    ('-', 'Deleted'),
+                ))
+            history_object = HistoricalObjectDescriptor(model)
+            history_editor = models.ForeignKey(User, null=True, blank=True, related_name=rel_nm_user)
+
+            def __unicode__(self):
+                return u'%s as of %s' % (self.history_object, self.history_date)
+
+            @property
+            def previous_entry(self):
+                try:
+                    return self.history_object.history.order_by('-history_id').filter(history_id__lt=self.history_id)[0]
+                except IndexError:
+                    return None
+
+            @property
+            def modified_fields(self):
+                """
+                Return a list of which field have been changed during this save.
+                """
+                previous_entry = self.previous_entry
+                if previous_entry:
+                    modified = []
+                    for field in model._meta.fields:
+                        name = field.name
+                        from_value = getattr(self, name)
+                        to_value = getattr(previous_entry, name)
+                        if from_value != to_value:
+                            modified.append(HistoryChange(name, from_value, to_value))
+                    return modified
+                else:
+                    # No previous history entry, so actually everything has been modified.
+                    return [ HistoryChange(f.name, None, getattr(self, f.name)) for f in model._meta.fields]
+
+        return HistoryEntry
 
     def copy_fields(self, model):
         """
         Creates copies of the model's original fields, returning
         a dictionary mapping field name to copied field object.
         """
-        # Though not strictly a field, this attribute
-        # is required for a model to function properly.
-        fields = {'__module__': self._module or model.__module__}
-
+        fields = { }
         for field in model._meta.fields:
             field = copy.copy(field)
             if isinstance(field, models.AutoField):
@@ -90,30 +160,12 @@ class HistoricalRecords(object):
                 field.primary_key = False
                 field._unique = False
                 field.db_index = True
+
+            # TODO: one-to-one field
+
             fields[field.name] = field
 
         return fields
-
-    def get_extra_fields(self, model):
-        """
-        Returns a dictionary of fields that will be added to the historical
-        record model, in addition to the ones returned by copy_fields below.
-        """
-        rel_nm = '_%s_history' % model._meta.object_name.lower()
-        rel_nm_user = '_%s_history_editor' % model._meta.object_name.lower()
-        return {
-            'history_id': models.AutoField(primary_key=True),
-            'history_date': models.DateTimeField(default=datetime.datetime.now),
-            'history_type': models.CharField(max_length=1, choices=(
-                ('+', 'Created'),
-                ('~', 'Changed'),
-                ('-', 'Deleted'),
-            )),
-            'history_object': HistoricalObjectDescriptor(model),
-            'history_editor': models.ForeignKey(User, null=True, blank=True, related_name=rel_nm_user),
-            '__unicode__': lambda self: u'%s as of %s' % (self.history_object,
-                                                          self.history_date)
-        }
 
     def get_meta_options(self, model):
         """
@@ -126,6 +178,12 @@ class HistoricalRecords(object):
         }
 
     def post_save(self, instance, created, **kwargs):
+        """
+        During post-save, create historical record if none has been created before,
+        or when the saved instance has fields which differ from the most recent
+        historicalrecord.
+        """
+        # TODO : decide whether to create or not.
         self.create_historical_record(instance, instance._history_editor, created and '+' or '~')
 
     def post_delete(self, instance, **kwargs):
