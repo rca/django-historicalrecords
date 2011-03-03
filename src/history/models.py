@@ -15,7 +15,7 @@ class HistoryChange(object):
         self.to_value = to_value
 
     def __unicode__(self):
-        return 'Field %s changed from %s to %s' % (self.name, self.from_value, self.to_value)
+        return 'Field "%s" changed from "%s" to "%s"' % (self.name, self.from_value, self.to_value)
 
 
 class HistoricalRecords(object):
@@ -129,7 +129,7 @@ class HistoricalRecords(object):
                 if previous_entry:
                     modified = []
                     for field in model._meta.fields:
-                        name = field.name
+                        name = field.attname
                         from_value = getattr(self, name)
                         to_value = getattr(previous_entry, name)
                         if from_value != to_value:
@@ -183,8 +183,20 @@ class HistoricalRecords(object):
         or when the saved instance has fields which differ from the most recent
         historicalrecord.
         """
-        # TODO : decide whether to create or not.
-        self.create_historical_record(instance, instance._history_editor, created and '+' or '~')
+        # Decide whether to save a history copy: only when certain fields were changed.
+        save = True
+        try:
+            most_recent = instance.history.most_recent()
+            save = False
+            for field in instance._meta.fields:
+                if getattr(instance, field.attname) != getattr(most_recent, field.attname):
+                    save = True
+        except instance.DoesNotExist, e:
+            pass
+
+        # Create historical record
+        if save:
+            self.create_historical_record(instance, instance._history_editor, created and '+' or '~')
 
     def post_delete(self, instance, **kwargs):
         self.create_historical_record(instance, None, '-')
