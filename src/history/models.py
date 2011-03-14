@@ -3,6 +3,7 @@ import datetime
 
 from django.db import models
 from django.contrib.auth.models import User
+from django.db.models.base import ModelBase
 from functools import wraps
 
 from history import manager
@@ -19,8 +20,22 @@ class HistoryChange(object):
 
 
 class HistoricalRecords(object):
-    def __init__(self, module=None):
+    """
+    Usage:
+    class MyModel(models.Model):
+        ...
+        history = HistoricalRecords()
+
+    Parameters:
+    - (optional) module: act like this model was defined in another module.
+                         (This will be reported to Django and South for
+                         migrations, and table names.)
+    - (optional) fields: a list of field names to be checked and saved. If
+                         nothing is defined, all fields will be saved.
+    """
+    def __init__(self, module=None, fields=None):
         self._module = module
+        self._fields = fields
 
     def contribute_to_class(self, cls, name):
         self.manager_name = name
@@ -36,7 +51,7 @@ class HistoricalRecords(object):
         models.signals.post_delete.connect(self.post_delete, sender=sender,
                                            weak=False)
 
-        descriptor = manager.HistoryDescriptor(history_model)
+        descriptor = manager.HistoryDescriptor(history_model, self.get_important_field_names(sender))
         setattr(sender, self.manager_name, descriptor)
         self.capture_save_method(sender)
         self.create_set_editor_method(sender)
@@ -75,8 +90,9 @@ class HistoricalRecords(object):
         """
         rel_nm = '_%s_history' % model._meta.object_name.lower()
         rel_nm_user = '_%s_history_editor' % model._meta.object_name.lower()
+        important_field_names = self.get_important_field_names(model)
 
-        class HistoryEntryMeta(type):
+        class HistoryEntryMeta(ModelBase):
             """
             Meta class for history model. This will rename the history model,
             and copy the necessary fields from the other model.
@@ -92,7 +108,7 @@ class HistoricalRecords(object):
                 attrs.update(self.copy_fields(model))
                 attrs.update(Meta=type('Meta', (), self.get_meta_options(model)))
 
-                return type(name, bases, attrs)
+                return ModelBase.__new__(c, name, bases, attrs)
 
         class HistoryEntry(models.Model):
             """
@@ -107,7 +123,7 @@ class HistoricalRecords(object):
                     ('~', 'Changed'),
                     ('-', 'Deleted'),
                 ))
-            history_object = HistoricalObjectDescriptor(model)
+            history_object = HistoricalObjectDescriptor(model, self.get_important_field_names(model))
             history_editor = models.ForeignKey(User, null=True, blank=True, related_name=rel_nm_user)
 
             def __unicode__(self):
@@ -128,18 +144,27 @@ class HistoricalRecords(object):
                 previous_entry = self.previous_entry
                 if previous_entry:
                     modified = []
-                    for field in model._meta.fields:
-                        name = field.attname
-                        from_value = getattr(self, name)
-                        to_value = getattr(previous_entry, name)
+                    for field in important_field_names:
+                        from_value = getattr(self, field)
+                        to_value = getattr(previous_entry, field)
                         if from_value != to_value:
-                            modified.append(HistoryChange(name, from_value, to_value))
+                            modified.append(HistoryChange(field, from_value, to_value))
                     return modified
                 else:
                     # No previous history entry, so actually everything has been modified.
-                    return [ HistoryChange(f.name, None, getattr(self, f.name)) for f in model._meta.fields]
+                    return [ HistoryChange(f, None, getattr(self, f)) for f in important_field_names ]
 
         return HistoryEntry
+
+    def get_important_fields(self, model):
+        """ Return the list of fields that we care about.  """
+        for f in model._meta.fields:
+            if f.name == 'id' or not self._fields or f.name in self._fields:
+                yield f
+
+    def get_important_field_names(self, model):
+        """ Return the names of the fields that we care about.  """
+        return [ f.attname for f in self.get_important_fields(model) ]
 
     def copy_fields(self, model):
         """
@@ -147,7 +172,7 @@ class HistoricalRecords(object):
         a dictionary mapping field name to copied field object.
         """
         fields = { }
-        for field in model._meta.fields:
+        for field in self.get_important_fields(model):
             field = copy.copy(field)
             if isinstance(field, models.AutoField):
                 # The historical model gets its own AutoField, so any
@@ -188,8 +213,8 @@ class HistoricalRecords(object):
         try:
             most_recent = instance.history.most_recent()
             save = False
-            for field in instance._meta.fields:
-                if getattr(instance, field.attname) != getattr(most_recent, field.attname):
+            for field in self.get_important_field_names(instance):
+                if getattr(instance, field) != getattr(most_recent, field):
                     save = True
         except instance.DoesNotExist, e:
             pass
@@ -204,14 +229,15 @@ class HistoricalRecords(object):
     def create_historical_record(self, instance, editor, type):
         manager = getattr(instance, self.manager_name)
         attrs = {}
-        for field in instance._meta.fields:
-            attrs[field.attname] = getattr(instance, field.attname)
+        for field in self.get_important_field_names(instance):
+            attrs[field] = getattr(instance, field)
         manager.create(history_type=type, history_editor=editor, **attrs)
 
 class HistoricalObjectDescriptor(object):
-    def __init__(self, model):
+    def __init__(self, model, important_fields):
         self.model = model
+        self.important_fields = important_fields
 
     def __get__(self, instance, owner):
-        values = (getattr(instance, f.attname) for f in self.model._meta.fields)
-        return self.model(*values)
+        values = dict( (f, getattr(instance, f)) for f in self.important_fields)
+        return self.model(**values)

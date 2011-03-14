@@ -1,19 +1,23 @@
 from django.db import models
 
+
 class HistoryDescriptor(object):
-    def __init__(self, model):
+    def __init__(self, model, important_fields):
         self.model = model
+        self.important_fields = important_fields
 
     def __get__(self, instance, owner):
         if instance is None:
-            return HistoryManager(self.model)
-        return HistoryManager(self.model, instance)
+            return HistoryManager(self.model, self.important_fields)
+        return HistoryManager(self.model, self.important_fields, instance)
+
 
 class HistoryManager(models.Manager):
-    def __init__(self, model, instance=None):
+    def __init__(self, model, important_fields, instance=None):
         super(HistoryManager, self).__init__()
         self.model = model
         self.instance = instance
+        self.important_fields = important_fields
 
     def get_query_set(self):
         if self.instance is None:
@@ -29,7 +33,8 @@ class HistoryManager(models.Manager):
         if not self.instance:
             raise TypeError("Can't use most_recent() without a %s instance." % \
                             self.instance._meta.object_name)
-        fields = (field.name for field in self.instance._meta.fields)
+        #fields = (field.name for field in self.instance._meta.fields)
+        fields = self.important_fields
         try:
             values = self.values_list(*fields)[0]
         except IndexError:
