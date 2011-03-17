@@ -10,10 +10,11 @@ from history import manager
 
 
 class HistoryChange(object):
-    def __init__(self, name, from_value, to_value):
+    def __init__(self, name, from_value, to_value, verbose_name):
         self.name = name
         self.from_value = from_value
         self.to_value = to_value
+        self.verbose_name = verbose_name
 
     def __unicode__(self):
         return 'Field "%s" changed from "%s" to "%s"' % (self.name, self.from_value, self.to_value)
@@ -92,6 +93,11 @@ class HistoricalRecords(object):
         rel_nm_user = '_%s_history_editor' % model._meta.object_name.lower()
         important_field_names = self.get_important_field_names(model)
 
+        def get_verbose_name(model, field_name):
+            for f in model._meta.fields:
+                if f.name == field_name:
+                    return f.verbose_name
+
         class HistoryEntryMeta(ModelBase):
             """
             Meta class for history model. This will rename the history model,
@@ -148,11 +154,11 @@ class HistoricalRecords(object):
                         from_value = getattr(self, field)
                         to_value = getattr(previous_entry, field)
                         if from_value != to_value:
-                            modified.append(HistoryChange(field, from_value, to_value))
+                            modified.append(HistoryChange(field, from_value, to_value, get_verbose_name(model, field)))
                     return modified
                 else:
                     # No previous history entry, so actually everything has been modified.
-                    return [ HistoryChange(f, None, getattr(self, f)) for f in important_field_names ]
+                    return [ HistoryChange(f, None, getattr(self, f), get_verbose_name(model, f)) for f in important_field_names ]
 
         return HistoryEntry
 
