@@ -151,8 +151,8 @@ class HistoricalRecords(object):
                 if previous_entry:
                     modified = []
                     for field in important_field_names:
-                        from_value = getattr(self, field)
-                        to_value = getattr(previous_entry, field)
+                        from_value = getattr(previous_entry, field)
+                        to_value = getattr(self, field)
                         if from_value != to_value:
                             modified.append(HistoryChange(field, from_value, to_value, get_verbose_name(model, field)))
                     return modified
