@@ -180,6 +180,8 @@ class HistoricalRecords(object):
         fields = { }
         for field in self.get_important_fields(model):
             field = copy.copy(field)
+            field_name = field.name
+
             if isinstance(field, models.AutoField):
                 # The historical model gets its own AutoField, so any
                 # existing one must be replaced with an IntegerField.
@@ -192,9 +194,13 @@ class HistoricalRecords(object):
                 field._unique = False
                 field.db_index = True
 
-            # TODO: one-to-one field
+            if isinstance(field, models.OneToOneField):
+                # OneToOne relations in the model should be converted to
+                # ForeignKeys as it is now possible that it is no longer
+                # unique.
+                field = models.ForeignKey(to=field.rel.to, related_name="+", null=True, blank=True)
 
-            fields[field.name] = field
+            fields[field_name] = field
 
         return fields
 
