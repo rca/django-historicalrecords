@@ -220,6 +220,10 @@ class HistoricalRecords(object):
         or when the saved instance has fields which differ from the most recent
         historicalrecord.
         """
+        # if the 'raw' keyword argument was added and is True, we are loading raw data
+        # (for example from a fixture) and we don't want to execute this hook.
+        if 'raw' in kwargs and kwargs['raw']:
+            return
         # Decide whether to save a history copy: only when certain fields were changed.
         save = True
         try:
