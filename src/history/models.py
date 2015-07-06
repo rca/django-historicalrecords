@@ -194,6 +194,12 @@ class HistoricalRecords(object):
                 field._unique = False
                 field.db_index = True
 
+            if isinstance(field, models.ForeignKey):
+                # Do not use a related name for foreign keys, or it will clash with the
+                # original model. This uses the private representation of ForiegnKey and
+                # may not be compatible with future Django versions.
+                field.rel.related_name = '+'
+
             if isinstance(field, models.OneToOneField):
                 # OneToOne relations in the model should be converted to
                 # ForeignKeys as it is now possible that it is no longer
