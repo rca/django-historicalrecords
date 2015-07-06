@@ -19,12 +19,12 @@ class HistoryManager(models.Manager):
         self.instance = instance
         self.important_fields = important_fields
 
-    def get_query_set(self):
+    def get_queryset(self):
         if self.instance is None:
-            return super(HistoryManager, self).get_query_set()
+            return super(HistoryManager, self).get_queryset()
 
         filter = {self.instance._meta.pk.name: self.instance.pk}
-        return super(HistoryManager, self).get_query_set().filter(**filter)
+        return super(HistoryManager, self).get_queryset().filter(**filter)
 
     def most_recent(self):
         """
