@@ -179,7 +179,7 @@ class HistoricalRecords(object):
         """
         fields = { }
         for field in self.get_important_fields(model):
-            field = copy.copy(field)
+            field = copy.deepcopy(field)
             field_name = field.name
 
             if isinstance(field, models.AutoField):
