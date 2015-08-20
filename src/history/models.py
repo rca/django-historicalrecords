@@ -179,7 +179,7 @@ class HistoricalRecords(object):
         """
         fields = { }
         for field in self.get_important_fields(model):
-            field = copy.copy(field)
+            field = copy.deepcopy(field)
             field_name = field.name
 
             if isinstance(field, models.AutoField):
@@ -193,6 +193,12 @@ class HistoricalRecords(object):
                 field.primary_key = False
                 field._unique = False
                 field.db_index = True
+
+            if isinstance(field, models.ForeignKey):
+                # Do not use a related name for foreign keys, or it will clash with the
+                # original model. This uses the private representation of ForiegnKey and
+                # may not be compatible with future Django versions.
+                field.rel.related_name = '+'
 
             if isinstance(field, models.OneToOneField):
                 # OneToOne relations in the model should be converted to
