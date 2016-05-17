@@ -130,7 +130,8 @@ class HistoricalRecords(object):
                     ('-', 'Deleted'),
                 ))
             history_object = HistoricalObjectDescriptor(model, self.get_important_field_names(model))
-            history_editor = models.ForeignKey(User, null=True, blank=True, related_name=rel_nm_user)
+            history_editor = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True,
+                                               related_name=rel_nm_user)
 
             def __unicode__(self):
                 return u'%s as of %s' % (self.history_object, self.history_date)
@@ -204,7 +205,8 @@ class HistoricalRecords(object):
                 # OneToOne relations in the model should be converted to
                 # ForeignKeys as it is now possible that it is no longer
                 # unique.
-                field = models.ForeignKey(to=field.rel.to, related_name="+", null=True, blank=True)
+                field = models.ForeignKey(to=field.rel.to, on_delete=models.CASCADE, related_name="+", null=True,
+                                          blank=True)
 
             fields[field_name] = field
 
