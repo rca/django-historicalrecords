@@ -4,9 +4,9 @@ def listify(filename):
     return filter(None, open(filename, 'r').read().split('\n'))
 
 setup(
-    name = "django-historicalrecords",
-    version = "1.2.2",
-    url = 'http://github.com/smn/django-historicalrecords',
+    name = "django-historicalrecords-rca",
+    version = "1.2.3",
+    url = 'http://github.com/rca/django-historicalrecords',
     license = 'BSD',
     description = "Marty Alchin's HistoricalRecords from the ProDjango book.",
     long_description = open('README.rst','r').read(),
