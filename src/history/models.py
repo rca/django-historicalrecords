@@ -4,6 +4,7 @@ import datetime
 from django.db import models
 from django.conf import settings
 from django.db.models.base import ModelBase
+from django.utils import timezone
 from functools import wraps
 
 from history import manager
@@ -123,7 +124,7 @@ class HistoricalRecords(object):
             __metaclass__ = HistoryEntryMeta
 
             history_id = models.AutoField(primary_key=True)
-            history_date = models.DateTimeField(default=datetime.datetime.now)
+            history_date = models.DateTimeField(default=timezone.now)
             history_type = models.CharField(max_length=1, choices=(
                     ('+', 'Created'),
                     ('~', 'Changed'),
