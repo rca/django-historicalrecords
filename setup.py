@@ -5,7 +5,7 @@ def listify(filename):
 
 setup(
     name = "django-historicalrecords-rca",
-    version = "1.2.3",
+    version = "1.2.4",
     url = 'http://github.com/rca/django-historicalrecords',
     license = 'BSD',
     description = "Marty Alchin's HistoricalRecords from the ProDjango book.",
