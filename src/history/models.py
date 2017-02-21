@@ -2,7 +2,7 @@ import copy
 import datetime
 
 from django.db import models
-from django.contrib.auth.models import User
+from django.conf import settings
 from django.db.models.base import ModelBase
 from functools import wraps
 
@@ -130,7 +130,7 @@ class HistoricalRecords(object):
                     ('-', 'Deleted'),
                 ))
             history_object = HistoricalObjectDescriptor(model, self.get_important_field_names(model))
-            history_editor = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True,
+            history_editor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True, blank=True,
                                                related_name=rel_nm_user)
 
             def __unicode__(self):
